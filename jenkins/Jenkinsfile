@@ -1,0 +1,271 @@
+pipeline {
+    agent any
+    
+    environment {
+        DOCKER_REGISTRY = "${env.DOCKER_REGISTRY ?: 'localhost:5000'}"
+        IMAGE_NAME = "${env.JOB_NAME}".replaceAll('Projects/', '').toLowerCase().replaceAll('[^a-z0-9-]', '-')
+        IMAGE_TAG = "${env.BUILD_NUMBER}"
+        LANGUAGE = ''
+        HAS_WHANOS_YML = 'false'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo "╔═══════════════════════════════════════════╗"
+                echo "║     🐋 Whanos Build Pipeline Started     ║"
+                echo "╚═══════════════════════════════════════════╝"
+                checkout scm
+            }
+        }
+        
+        stage('Detect Language') {
+            steps {
+                script {
+                    echo "🔍 Detecting project language..."
+                    
+                    // Check for C (Makefile at root)
+                    if (fileExists('Makefile')) {
+                        LANGUAGE = 'c'
+                        echo "✅ Detected: C (Makefile found)"
+                    }
+                    // Check for Java (pom.xml in app/)
+                    else if (fileExists('app/pom.xml')) {
+                        LANGUAGE = 'java'
+                        echo "✅ Detected: Java (app/pom.xml found)"
+                    }
+                    // Check for JavaScript (package.json at root)
+                    else if (fileExists('package.json')) {
+                        LANGUAGE = 'javascript'
+                        echo "✅ Detected: JavaScript (package.json found)"
+                    }
+                    // Check for Python (requirements.txt at root)
+                    else if (fileExists('requirements.txt')) {
+                        LANGUAGE = 'python'
+                        echo "✅ Detected: Python (requirements.txt found)"
+                    }
+                    // Check for Befunge (main.bf in app/)
+                    else if (fileExists('app/main.bf')) {
+                        LANGUAGE = 'befunge'
+                        echo "✅ Detected: Befunge (app/main.bf found)"
+                    }
+                    else {
+                        error("❌ Could not detect project language. No valid marker file found.")
+                    }
+                    
+                    // Check for whanos.yml
+                    if (fileExists('whanos.yml')) {
+                        HAS_WHANOS_YML = 'true'
+                        echo "✅ whanos.yml found - will deploy to Kubernetes"
+                    } else {
+                        echo "ℹ️  No whanos.yml found - build only (no deployment)"
+                    }
+                }
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    echo "🔨 Building Docker image for ${LANGUAGE}..."
+                    
+                    def dockerfilePath = ''
+                    def buildContext = '.'
+                    
+                    // Check if project has custom Dockerfile
+                    if (fileExists('Dockerfile')) {
+                        echo "📄 Using custom Dockerfile with whanos-${LANGUAGE} base"
+                        dockerfilePath = 'Dockerfile'
+                        
+                        // Pull the base image first
+                        sh """
+                            docker pull ${DOCKER_REGISTRY}/whanos-${LANGUAGE}:latest || true
+                        """
+                    } else {
+                        echo "📄 Using standalone Dockerfile for ${LANGUAGE}"
+                        // Copy standalone Dockerfile to workspace
+                        sh """
+                            curl -f https://raw.githubusercontent.com/YOUR_REPO/whanos/main/images/${LANGUAGE}/Dockerfile.standalone -o Dockerfile.whanos || \
+                            cat /var/jenkins_home/whanos-images/${LANGUAGE}/Dockerfile.standalone > Dockerfile.whanos
+                        """
+                        dockerfilePath = 'Dockerfile.whanos'
+                    }
+                    
+                    // Build the image
+                    sh """
+                        docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -f ${dockerfilePath} ${buildContext}
+                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${DOCKER_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
+                    """
+                    
+                    echo "✅ Docker image built: ${IMAGE_NAME}:${IMAGE_TAG}"
+                }
+            }
+        }
+        
+        stage('Push to Registry') {
+            steps {
+                script {
+                    echo "📤 Pushing image to registry..."
+                    sh """
+                        docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+                        docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
+                    """
+                    echo "✅ Image pushed successfully"
+                }
+            }
+        }
+        
+        stage('Deploy to Kubernetes') {
+            when {
+                expression { HAS_WHANOS_YML == 'true' }
+            }
+            steps {
+                script {
+                    echo "☸️  Deploying to Kubernetes cluster..."
+                    
+                    // Parse whanos.yml
+                    def whanosConfig = readYaml file: 'whanos.yml'
+                    def deployment = whanosConfig.deployment ?: [:]
+                    
+                    def replicas = deployment.replicas ?: 1
+                    def ports = deployment.ports ?: []
+                    def resources = deployment.resources ?: [:]
+                    
+                    // Create namespace if it doesn't exist
+                    sh """
+                        kubectl create namespace ${IMAGE_NAME} --dry-run=client -o yaml | kubectl apply -f -
+                    """
+                    
+                    // Generate and apply deployment
+                    def deploymentYaml = """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${IMAGE_NAME}
+  namespace: ${IMAGE_NAME}
+  labels:
+    app: ${IMAGE_NAME}
+spec:
+  replicas: ${replicas}
+  selector:
+    matchLabels:
+      app: ${IMAGE_NAME}
+  template:
+    metadata:
+      labels:
+        app: ${IMAGE_NAME}
+    spec:
+      containers:
+      - name: ${IMAGE_NAME}
+        image: ${DOCKER_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+        ports:
+"""
+                    
+                    ports.each { port ->
+                        deploymentYaml += """
+        - containerPort: ${port}
+"""
+                    }
+                    
+                    if (resources) {
+                        deploymentYaml += """
+        resources:
+"""
+                        if (resources.limits) {
+                            deploymentYaml += """
+          limits:
+            cpu: "${resources.limits.cpu ?: '500m'}"
+            memory: "${resources.limits.memory ?: '512Mi'}"
+"""
+                        }
+                        if (resources.requests) {
+                            deploymentYaml += """
+          requests:
+            cpu: "${resources.requests.cpu ?: '250m'}"
+            memory: "${resources.requests.memory ?: '256Mi'}"
+"""
+                        }
+                    }
+                    
+                    writeFile file: 'deployment.yaml', text: deploymentYaml
+                    
+                    // Apply deployment
+                    sh """
+                        kubectl apply -f deployment.yaml
+                    """
+                    
+                    // Create service if ports are defined
+                    if (ports) {
+                        def serviceYaml = """
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${IMAGE_NAME}
+  namespace: ${IMAGE_NAME}
+spec:
+  selector:
+    app: ${IMAGE_NAME}
+  type: NodePort
+  ports:
+"""
+                        
+                        ports.each { port ->
+                            serviceYaml += """
+  - port: ${port}
+    targetPort: ${port}
+    protocol: TCP
+"""
+                        }
+                        
+                        writeFile file: 'service.yaml', text: serviceYaml
+                        
+                        sh """
+                            kubectl apply -f service.yaml
+                        """
+                        
+                        echo "✅ Service created and exposed"
+                    }
+                    
+                    // Wait for deployment to be ready
+                    sh """
+                        kubectl rollout status deployment/${IMAGE_NAME} -n ${IMAGE_NAME} --timeout=5m
+                    """
+                    
+                    echo "✅ Deployment successful!"
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            script {
+                echo """
+╔═══════════════════════════════════════════╗
+║     🎉 Build & Deploy Successful! 🎉     ║
+╠═══════════════════════════════════════════╣
+║  Language: ${LANGUAGE}
+║  Image: ${IMAGE_NAME}:${IMAGE_TAG}
+║  Registry: ${DOCKER_REGISTRY}
+${HAS_WHANOS_YML == 'true' ? "║  Deployed: ✅ Yes" : "║  Deployed: ❌ No (no whanos.yml)"}
+╚═══════════════════════════════════════════╝
+                """
+            }
+        }
+        failure {
+            echo """
+╔═══════════════════════════════════════════╗
+║        ❌ Build/Deploy Failed ❌          ║
+╚═══════════════════════════════════════════╝
+            """
+        }
+        always {
+            // Cleanup
+            sh """
+                docker rmi ${IMAGE_NAME}:${IMAGE_TAG} || true
+                rm -f Dockerfile.whanos deployment.yaml service.yaml || true
+            """
+        }
+    }
+}
