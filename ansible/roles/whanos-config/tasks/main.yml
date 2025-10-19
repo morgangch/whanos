@@ -1,0 +1,166 @@
+---
+# Whanos Configuration Tasks
+# Integrates all Whanos components (Jenkins, Registry, Kubernetes)
+
+- name: Create Whanos configuration directory
+  file:
+    path: /etc/whanos
+    state: directory
+    mode: '0755'
+
+- name: Create Whanos configuration file
+  template:
+    content: |
+      # Whanos Configuration
+      WHANOS_VERSION=1.0.0
+      DOCKER_REGISTRY={{ hostvars[groups['registry'][0]]['ansible_default_ipv4']['address'] }}:{{ docker_registry_port | default('5000') }}
+      JENKINS_URL=http://{{ hostvars[groups['jenkins'][0]]['ansible_default_ipv4']['address'] }}:8080
+      K8S_MASTER={{ hostvars[groups['kube_control_plane'][0]]['ansible_default_ipv4']['address'] }}
+      WHANOS_NAMESPACE=whanos-system
+    dest: /etc/whanos/config.env
+    mode: '0644'
+
+- name: Configure Jenkins to use Docker registry
+  lineinfile:
+    path: /etc/environment
+    line: "DOCKER_REGISTRY={{ hostvars[groups['registry'][0]]['ansible_default_ipv4']['address'] }}:{{ docker_registry_port | default('5000') }}"
+    create: yes
+  when: "'jenkins' in group_names"
+
+- name: Configure Jenkins with kubectl access
+  block:
+    - name: Copy kubeconfig to Jenkins
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /var/lib/jenkins/.kube/config
+        remote_src: yes
+        owner: jenkins
+        group: jenkins
+        mode: '0600'
+      delegate_to: "{{ groups['kube_control_plane'][0] }}"
+    
+    - name: Install kubectl for Jenkins
+      get_url:
+        url: https://dl.k8s.io/release/v1.28.0/bin/linux/amd64/kubectl
+        dest: /usr/local/bin/kubectl
+        mode: '0755'
+  when: "'jenkins' in group_names"
+  ignore_errors: yes
+
+- name: Create Whanos namespace in Kubernetes
+  command: kubectl create namespace whanos-system
+  when: "'kube_control_plane' in group_names or 'master' in group_names"
+  ignore_errors: yes
+
+- name: Create Docker registry secret in Kubernetes
+  command: >
+    kubectl create secret docker-registry whanos-registry-secret
+    --docker-server={{ hostvars[groups['registry'][0]]['ansible_default_ipv4']['address'] }}:{{ docker_registry_port | default('5000') }}
+    --docker-username={{ docker_registry_username | default('admin') }}
+    --docker-password={{ docker_registry_password | default('admin') }}
+    --namespace=whanos-system
+  when: 
+    - "'kube_control_plane' in group_names or 'master' in group_names"
+    - docker_registry_auth_enabled | default(false)
+  ignore_errors: yes
+
+- name: Configure insecure registry on all nodes
+  template:
+    content: |
+      {
+        "insecure-registries": ["{{ hostvars[groups['registry'][0]]['ansible_default_ipv4']['address'] }}:{{ docker_registry_port | default('5000') }}"],
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      }
+    dest: /etc/docker/daemon.json
+    mode: '0644'
+  notify: Restart Docker
+  when: docker_registry_insecure | default(true)
+
+- name: Copy Whanos images to Jenkins
+  synchronize:
+    src: "{{ playbook_dir }}/../../images/"
+    dest: /var/lib/jenkins/whanos-images/
+    mode: push
+  delegate_to: "{{ groups['jenkins'][0] }}"
+  when: inventory_hostname == groups['jenkins'][0]
+
+- name: Copy Whanos Kubernetes manifests
+  synchronize:
+    src: "{{ playbook_dir }}/../../kubernetes/"
+    dest: /var/lib/jenkins/whanos-k8s-templates/
+    mode: push
+  delegate_to: "{{ groups['jenkins'][0] }}"
+  when: inventory_hostname == groups['jenkins'][0]
+
+- name: Create Jenkins credentials for Docker registry
+  jenkins_script:
+    script: |
+      import jenkins.model.*
+      import com.cloudbees.plugins.credentials.*
+      import com.cloudbees.plugins.credentials.domains.*
+      import com.cloudbees.plugins.credentials.impl.*
+      
+      domain = Domain.global()
+      store = Jenkins.instance.getExtensionList('com.cloudbees.plugins.credentials.SystemCredentialsProvider')[0].getStore()
+      
+      credentials = new UsernamePasswordCredentialsImpl(
+        CredentialsScope.GLOBAL,
+        "docker-registry-credentials",
+        "Docker Registry Credentials",
+        "{{ docker_registry_username | default('admin') }}",
+        "{{ docker_registry_password | default('admin') }}"
+      )
+      
+      store.addCredentials(domain, credentials)
+    user: "{{ jenkins_admin_user | default('Admin') }}"
+    password: "{{ jenkins_admin_password | default('admin') }}"
+  when: 
+    - "'jenkins' in group_names"
+    - docker_registry_auth_enabled | default(false)
+  ignore_errors: yes
+
+- name: Create welcome message
+  copy:
+    content: |
+      ╔═══════════════════════════════════════════════════════════════╗
+      ║                  🐋 Welcome to Whanos! 🐋                    ║
+      ╠═══════════════════════════════════════════════════════════════╣
+      ║                                                               ║
+      ║  Whanos DevOps Infrastructure is ready!                      ║
+      ║                                                               ║
+      ║  📦 Docker Registry:                                          ║
+      ║     http://{{ hostvars[groups['registry'][0]]['ansible_default_ipv4']['address'] }}:{{ docker_registry_port | default('5000') }}
+      ║                                                               ║
+      ║  🔧 Jenkins CI/CD:                                            ║
+      ║     http://{{ hostvars[groups['jenkins'][0]]['ansible_default_ipv4']['address'] }}:8080
+      ║     User: {{ jenkins_admin_user | default('Admin') }}
+      ║     Pass: {{ jenkins_admin_password | default('admin') }}
+      ║                                                               ║
+      ║  ☸️  Kubernetes Cluster:                                      ║
+      ║     Master: {{ hostvars[groups['kube_control_plane'][0]]['ansible_default_ipv4']['address'] }}
+      ║     Run: kubectl cluster-info                                ║
+      ║                                                               ║
+      ║  📚 Documentation: ./docs/                                    ║
+      ║                                                               ║
+      ║  To link a project:                                          ║
+      ║  1. Go to Jenkins > link-project                             ║
+      ║  2. Enter your Git repository URL                            ║
+      ║  3. Push code and watch it deploy automatically!             ║
+      ║                                                               ║
+      ╚═══════════════════════════════════════════════════════════════╝
+    dest: /etc/motd
+    mode: '0644'
+
+- name: Display Whanos summary
+  debug:
+    msg: |
+      ╔═══════════════════════════════════════════╗
+      ║   🎉 Whanos Configuration Complete! 🎉   ║
+      ╠═══════════════════════════════════════════╣
+      ║  All components are integrated and ready ║
+      ║  Check /etc/whanos/config.env for info  ║
+      ╚═══════════════════════════════════════════╝

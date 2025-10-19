@@ -1,0 +1,105 @@
+---
+# Whanos Infrastructure Deployment Playbook
+# This playbook deploys/updates the Whanos infrastructure
+
+- name: Deploy Whanos Components
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  pre_tasks:
+    - name: Display deployment banner
+      debug:
+        msg: |
+          ╔═══════════════════════════════════════════╗
+          ║     🚀 Whanos Deployment Started         ║
+          ╚═══════════════════════════════════════════╝
+
+- name: Deploy Docker Registry
+  hosts: registry
+  become: yes
+  tasks:
+    - name: Ensure Docker registry is running
+      docker_container:
+        name: registry
+        image: registry:2
+        state: started
+        restart_policy: always
+        ports:
+          - "5000:5000"
+        volumes:
+          - "{{ docker_registry_data_dir }}:/var/lib/registry"
+        env:
+          REGISTRY_STORAGE_DELETE_ENABLED: "true"
+    
+    - name: Wait for registry to be ready
+      uri:
+        url: "http://localhost:5000/v2/"
+        status_code: 200
+      register: result
+      until: result.status == 200
+      retries: 10
+      delay: 5
+
+- name: Deploy Jenkins Configuration
+  hosts: jenkins
+  become: yes
+  tasks:
+    - name: Copy Jenkins job configurations
+      copy:
+        src: "{{ item }}"
+        dest: "/var/jenkins_home/jobs/"
+        mode: '0755'
+      loop:
+        - "../../jenkins/build-base-images.groovy"
+        - "../../jenkins/link-project.groovy"
+        - "../../jenkins/Jenkinsfile"
+      notify: Restart Jenkins
+    
+    - name: Copy Whanos Docker images definitions
+      copy:
+        src: "../../images/"
+        dest: "/var/jenkins_home/whanos-images/"
+        mode: '0755'
+    
+    - name: Ensure Jenkins is running
+      service:
+        name: jenkins
+        state: started
+        enabled: yes
+
+- name: Verify Kubernetes Cluster
+  hosts: k8s_cluster
+  become: yes
+  tasks:
+    - name: Check cluster status
+      command: kubectl cluster-info
+      register: cluster_info
+      changed_when: false
+      delegate_to: "{{ groups['kube_control_plane'][0] }}"
+      run_once: true
+    
+    - name: Display cluster info
+      debug:
+        var: cluster_info.stdout_lines
+      run_once: true
+
+- name: Post-deployment verification
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Display deployment summary
+      debug:
+        msg: |
+          ╔═══════════════════════════════════════════╗
+          ║   ✅ Whanos Deployment Complete!         ║
+          ╠═══════════════════════════════════════════╣
+          ║  All components have been deployed       ║
+          ║  and are ready for use.                  ║
+          ╚═══════════════════════════════════════════╝
+
+  handlers:
+    - name: Restart Jenkins
+      service:
+        name: jenkins
+        state: restarted

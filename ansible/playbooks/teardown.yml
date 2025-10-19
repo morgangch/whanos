@@ -1,0 +1,119 @@
+---
+# Whanos Infrastructure Teardown Playbook
+# This playbook safely removes the Whanos infrastructure
+
+- name: Teardown Whanos Infrastructure
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  pre_tasks:
+    - name: Display warning
+      debug:
+        msg: |
+          ╔═══════════════════════════════════════════╗
+          ║     ⚠️  Whanos Teardown Starting ⚠️      ║
+          ╠═══════════════════════════════════════════╣
+          ║  This will remove all Whanos components  ║
+          ║  Press Ctrl+C to abort...                ║
+          ╚═══════════════════════════════════════════╝
+    
+    - name: Pause for confirmation
+      pause:
+        seconds: 10
+        prompt: "Teardown will begin in 10 seconds. Press Ctrl+C to cancel."
+
+- name: Remove Kubernetes deployments
+  hosts: k8s_cluster
+  become: yes
+  tasks:
+    - name: Get all Whanos namespaces
+      command: kubectl get namespaces -l managed-by=whanos -o jsonpath='{.items[*].metadata.name}'
+      register: whanos_namespaces
+      changed_when: false
+      delegate_to: "{{ groups['kube_control_plane'][0] }}"
+      run_once: true
+      ignore_errors: yes
+    
+    - name: Delete Whanos namespaces
+      command: "kubectl delete namespace {{ item }}"
+      loop: "{{ whanos_namespaces.stdout.split() }}"
+      when: whanos_namespaces.stdout | length > 0
+      delegate_to: "{{ groups['kube_control_plane'][0] }}"
+      run_once: true
+      ignore_errors: yes
+
+- name: Stop Jenkins
+  hosts: jenkins
+  become: yes
+  tasks:
+    - name: Stop Jenkins service
+      service:
+        name: jenkins
+        state: stopped
+      ignore_errors: yes
+    
+    - name: Remove Jenkins data (optional)
+      file:
+        path: "{{ jenkins_home }}"
+        state: absent
+      when: remove_data | default(false) | bool
+      tags: [never, remove-data]
+
+- name: Stop Docker Registry
+  hosts: registry
+  become: yes
+  tasks:
+    - name: Stop Docker registry container
+      docker_container:
+        name: registry
+        state: absent
+      ignore_errors: yes
+    
+    - name: Remove registry data (optional)
+      file:
+        path: "{{ docker_registry_data_dir }}"
+        state: absent
+      when: remove_data | default(false) | bool
+      tags: [never, remove-data]
+
+- name: Cleanup Kubernetes (optional)
+  hosts: k8s_cluster
+  become: yes
+  tasks:
+    - name: Reset Kubernetes cluster
+      command: kubeadm reset -f
+      when: reset_kubernetes | default(false) | bool
+      tags: [never, reset-k8s]
+      ignore_errors: yes
+    
+    - name: Remove Kubernetes directories
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/kubernetes
+        - /var/lib/kubelet
+        - /var/lib/etcd
+      when: reset_kubernetes | default(false) | bool
+      tags: [never, reset-k8s]
+      ignore_errors: yes
+
+- name: Display teardown summary
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Display completion message
+      debug:
+        msg: |
+          ╔═══════════════════════════════════════════╗
+          ║   🧹 Whanos Teardown Complete            ║
+          ╠═══════════════════════════════════════════╣
+          ║  Components have been stopped/removed    ║
+          ║                                           ║
+          ║  To remove all data, run with:           ║
+          ║  --tags remove-data                      ║
+          ║                                           ║
+          ║  To reset Kubernetes, run with:          ║
+          ║  --tags reset-k8s                        ║
+          ╚═══════════════════════════════════════════╝

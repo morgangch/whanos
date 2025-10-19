@@ -1,0 +1,75 @@
+---
+# Whanos Infrastructure Setup Playbook
+# This playbook sets up the complete Whanos infrastructure including:
+# - Docker and Docker Registry
+# - Jenkins CI/CD server
+# - Kubernetes cluster
+# - Whanos-specific configurations
+
+- name: Setup Whanos Infrastructure
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  pre_tasks:
+    - name: Display setup banner
+      debug:
+        msg: |
+          ╔═══════════════════════════════════════════╗
+          ║     🐋 Whanos Infrastructure Setup       ║
+          ╚═══════════════════════════════════════════╝
+    
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+    
+    - name: Install common packages
+      package:
+        name:
+          - curl
+          - wget
+          - git
+          - vim
+          - htop
+          - net-tools
+        state: present
+
+- name: Setup Docker Registry
+  hosts: registry
+  become: yes
+  roles:
+    - docker-registry
+
+- name: Setup Jenkins
+  hosts: jenkins
+  become: yes
+  roles:
+    - jenkins
+
+- name: Setup Kubernetes Cluster
+  hosts: k8s_cluster
+  become: yes
+  roles:
+    - kubernetes
+
+- name: Configure Whanos Integration
+  hosts: all
+  become: yes
+  roles:
+    - whanos-config
+  
+  post_tasks:
+    - name: Display completion message
+      debug:
+        msg: |
+          ╔═══════════════════════════════════════════╗
+          ║   🎉 Whanos Setup Complete! 🎉           ║
+          ╠═══════════════════════════════════════════╣
+          ║  Jenkins: http://{{ hostvars[groups['jenkins'][0]]['ansible_default_ipv4']['address'] }}:8080
+          ║  Registry: http://{{ hostvars[groups['registry'][0]]['ansible_default_ipv4']['address'] }}:5000
+          ║  Kubernetes: kubectl cluster-info
+          ╚═══════════════════════════════════════════╝
+      run_once: true
+      delegate_to: localhost

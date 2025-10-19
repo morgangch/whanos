@@ -1,0 +1,55 @@
+---
+# Whanos Global Variables
+# These variables apply to all hosts
+
+# General Configuration
+whanos_version: "1.0.0"
+environment: production
+
+# Jenkins Configuration
+jenkins_home: /var/lib/jenkins
+jenkins_admin_user: Admin
+jenkins_admin_password: changeme
+jenkins_port: 8080
+
+# Docker Registry Configuration
+docker_registry_port: 5000
+docker_registry_data_dir: /var/lib/docker-registry
+docker_registry_insecure: true
+docker_registry_auth_enabled: false
+docker_registry_username: admin
+docker_registry_password: changeme
+
+# Kubernetes Configuration
+k8s_version: 1.28.0
+k8s_pod_network_cidr: 10.244.0.0/16
+k8s_service_cidr: 10.96.0.0/12
+
+# Whanos Specific
+whanos_namespace: whanos-system
+whanos_supported_languages:
+  - c
+  - java
+  - javascript
+  - python
+  - befunge
+
+# Network Configuration
+enable_firewall: false
+allowed_ports:
+  - 22    # SSH
+  - 80    # HTTP
+  - 443   # HTTPS
+  - 5000  # Docker Registry
+  - 6443  # Kubernetes API
+  - 8080  # Jenkins
+
+# Backup Configuration
+enable_backup: false
+backup_dir: /var/backups/whanos
+backup_retention_days: 7
+
+# Monitoring (optional)
+enable_monitoring: false
+prometheus_port: 9090
+grafana_port: 3000

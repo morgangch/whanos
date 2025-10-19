@@ -1,0 +1,169 @@
+---
+# Jenkins Installation and Configuration Tasks
+
+- name: Install Java (required for Jenkins)
+  apt:
+    name: openjdk-17-jdk
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Add Jenkins repository key
+  apt_key:
+    url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Add Jenkins repository
+  apt_repository:
+    repo: deb https://pkg.jenkins.io/debian-stable binary/
+    state: present
+    filename: jenkins
+  when: ansible_os_family == "Debian"
+
+- name: Install Jenkins
+  apt:
+    name: jenkins
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Install Docker for Jenkins
+  block:
+    - name: Install Docker prerequisites
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+    
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+    
+    - name: Add Docker repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+    
+    - name: Install Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: present
+        update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Add Jenkins user to docker group
+  user:
+    name: jenkins
+    groups: docker
+    append: yes
+
+- name: Create Jenkins home directory
+  file:
+    path: "{{ jenkins_home | default('/var/lib/jenkins') }}"
+    state: directory
+    owner: jenkins
+    group: jenkins
+    mode: '0755'
+
+- name: Create Jenkins jobs directory
+  file:
+    path: "{{ jenkins_home | default('/var/lib/jenkins') }}/jobs"
+    state: directory
+    owner: jenkins
+    group: jenkins
+    mode: '0755'
+
+- name: Create Whanos images directory
+  file:
+    path: "{{ jenkins_home | default('/var/lib/jenkins') }}/whanos-images"
+    state: directory
+    owner: jenkins
+    group: jenkins
+    mode: '0755'
+
+- name: Start Jenkins service
+  systemd:
+    name: jenkins
+    state: started
+    enabled: yes
+
+- name: Wait for Jenkins to start
+  uri:
+    url: "http://localhost:8080"
+    status_code: 200,403
+  register: result
+  until: result.status in [200, 403]
+  retries: 30
+  delay: 10
+
+- name: Get Jenkins initial admin password
+  slurp:
+    src: /var/lib/jenkins/secrets/initialAdminPassword
+  register: jenkins_initial_password
+  ignore_errors: yes
+
+- name: Display Jenkins initial password
+  debug:
+    msg: "Jenkins Initial Admin Password: {{ jenkins_initial_password.content | b64decode }}"
+  when: jenkins_initial_password is succeeded
+
+- name: Install Jenkins plugins
+  jenkins_plugin:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - git
+    - workflow-aggregator
+    - docker-workflow
+    - kubernetes
+    - credentials-binding
+    - job-dsl
+    - pipeline-stage-view
+    - blueocean
+  ignore_errors: yes
+
+- name: Configure Jenkins admin user
+  jenkins_script:
+    script: |
+      import jenkins.model.*
+      import hudson.security.*
+      def instance = Jenkins.getInstance()
+      def hudsonRealm = new HudsonPrivateSecurityRealm(false)
+      hudsonRealm.createAccount("{{ jenkins_admin_user | default('Admin') }}", "{{ jenkins_admin_password | default('admin') }}")
+      instance.setSecurityRealm(hudsonRealm)
+      def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
+      instance.setAuthorizationStrategy(strategy)
+      instance.save()
+    user: admin
+    password: "{{ jenkins_admin_password | default('admin') }}"
+  ignore_errors: yes
+
+- name: Copy Jenkins job templates
+  copy:
+    src: "../../../jenkins/"
+    dest: "{{ jenkins_home | default('/var/lib/jenkins') }}/job-templates/"
+    owner: jenkins
+    group: jenkins
+    mode: '0644'
+
+- name: Restart Jenkins
+  systemd:
+    name: jenkins
+    state: restarted
+
+- name: Display Jenkins info
+  debug:
+    msg: |
+      Jenkins has been installed successfully!
+      URL: http://{{ ansible_default_ipv4.address }}:8080
+      Username: {{ jenkins_admin_user | default('Admin') }}
+      Password: {{ jenkins_admin_password | default('admin') }}

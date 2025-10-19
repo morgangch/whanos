@@ -1,0 +1,150 @@
+---
+# Docker Registry Installation and Configuration Tasks
+
+- name: Install Docker prerequisites
+  apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Add Docker GPG key
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Add Docker repository
+  apt_repository:
+    repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Install Docker
+  apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Start Docker service
+  systemd:
+    name: docker
+    state: started
+    enabled: yes
+
+- name: Create registry data directory
+  file:
+    path: "{{ docker_registry_data_dir | default('/var/lib/docker-registry') }}"
+    state: directory
+    mode: '0755'
+
+- name: Create registry config directory
+  file:
+    path: /etc/docker/registry
+    state: directory
+    mode: '0755'
+
+- name: Create registry authentication directory
+  file:
+    path: /etc/docker/registry/auth
+    state: directory
+    mode: '0755'
+  when: docker_registry_auth_enabled | default(false)
+
+- name: Generate htpasswd for registry
+  command: >
+    docker run --rm --entrypoint htpasswd 
+    httpd:2 -Bbn {{ docker_registry_username | default('admin') }} {{ docker_registry_password | default('admin') }}
+  register: htpasswd_output
+  when: docker_registry_auth_enabled | default(false)
+  changed_when: false
+
+- name: Save htpasswd file
+  copy:
+    content: "{{ htpasswd_output.stdout }}"
+    dest: /etc/docker/registry/auth/htpasswd
+    mode: '0644'
+  when: docker_registry_auth_enabled | default(false)
+
+- name: Create registry configuration file
+  template:
+    content: |
+      version: 0.1
+      log:
+        fields:
+          service: registry
+      storage:
+        cache:
+          blobdescriptor: inmemory
+        filesystem:
+          rootdirectory: /var/lib/registry
+        delete:
+          enabled: true
+      http:
+        addr: :5000
+        headers:
+          X-Content-Type-Options: [nosniff]
+      {% if docker_registry_auth_enabled | default(false) %}
+      auth:
+        htpasswd:
+          realm: basic-realm
+          path: /auth/htpasswd
+      {% endif %}
+      health:
+        storagedriver:
+          enabled: true
+          interval: 10s
+          threshold: 3
+    dest: /etc/docker/registry/config.yml
+    mode: '0644'
+
+- name: Run Docker registry container
+  docker_container:
+    name: registry
+    image: registry:2
+    state: started
+    restart_policy: always
+    ports:
+      - "{{ docker_registry_port | default('5000') }}:5000"
+    volumes: "{{ registry_volumes }}"
+    env:
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+  vars:
+    registry_volumes:
+      - "{{ docker_registry_data_dir | default('/var/lib/docker-registry') }}:/var/lib/registry"
+      - "/etc/docker/registry/config.yml:/etc/docker/registry/config.yml"
+      - "{{ '/etc/docker/registry/auth:/auth' if (docker_registry_auth_enabled | default(false)) else omit }}"
+
+- name: Wait for registry to be ready
+  uri:
+    url: "http://localhost:{{ docker_registry_port | default('5000') }}/v2/"
+    status_code: 200,401
+  register: result
+  until: result.status in [200, 401]
+  retries: 10
+  delay: 5
+
+- name: Configure Docker to use insecure registry (for development)
+  template:
+    content: |
+      {
+        "insecure-registries": ["{{ ansible_default_ipv4.address }}:{{ docker_registry_port | default('5000') }}"]
+      }
+    dest: /etc/docker/daemon.json
+    mode: '0644'
+  when: docker_registry_insecure | default(true)
+  notify: Restart Docker
+
+- name: Display registry information
+  debug:
+    msg: "Docker Registry has been installed successfully! URL: http://{{ ansible_default_ipv4.address }}:{{ docker_registry_port | default('5000') }} - Data: {{ docker_registry_data_dir | default('/var/lib/docker-registry') }} - Auth: {{ 'Enabled' if (docker_registry_auth_enabled | default(false)) else 'Disabled' }}"

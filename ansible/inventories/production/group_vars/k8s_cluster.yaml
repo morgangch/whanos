@@ -1,0 +1,50 @@
+---
+# Kubernetes Cluster Specific Variables
+
+# Cluster Configuration
+cluster_name: whanos-k8s
+kube_version: v1.28.0
+
+# Network Plugin
+kube_network_plugin: calico
+kube_pods_subnet: 10.244.0.0/16
+kube_service_addresses: 10.96.0.0/12
+
+# DNS Configuration
+dns_mode: coredns
+enable_nodelocaldns: false
+
+# Container Runtime
+container_manager: containerd
+
+# Kubelet Configuration
+kubelet_max_pods: 110
+kubelet_custom_flags:
+  - "--node-status-update-frequency=10s"
+
+# API Server Configuration
+kube_apiserver_enable_admission_plugins:
+  - NodeRestriction
+  - PodSecurityPolicy
+
+# Feature Gates
+kube_feature_gates:
+  - "TTLAfterFinished=true"
+
+# Addons
+helm_enabled: true
+ingress_nginx_enabled: true
+metrics_server_enabled: true
+
+# Security
+kube_encrypt_secret_data: false
+kube_api_anonymous_auth: false
+
+# LoadBalancer (if using MetalLB)
+# metallb_enabled: false
+# metallb_ip_range: "192.168.1.100-192.168.1.200"
+
+# Kubespray Specific (if using Kubespray)
+# kubespray_version: release-2.23
+# download_run_once: true
+# download_localhost: false
