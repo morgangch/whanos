@@ -1,0 +1,27 @@
+# Kubernetes Ingress Template for Whanos
+# This file is a template that will be processed by Jenkins during deployment
+# Variables will be substituted based on whanos.yml configuration
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: APP_NAME_PLACEHOLDER
+  namespace: NAMESPACE_PLACEHOLDER
+  labels:
+    app: APP_NAME_PLACEHOLDER
+    managed-by: whanos
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: DOMAIN_PLACEHOLDER
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: APP_NAME_PLACEHOLDER
+            port:
+              number: PORT_PLACEHOLDER

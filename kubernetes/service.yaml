@@ -1,0 +1,18 @@
+# Kubernetes Service Template for Whanos
+# This file is a template that will be processed by Jenkins during deployment
+# Variables will be substituted based on whanos.yml configuration
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: APP_NAME_PLACEHOLDER
+  namespace: NAMESPACE_PLACEHOLDER
+  labels:
+    app: APP_NAME_PLACEHOLDER
+    managed-by: whanos
+spec:
+  type: NodePort
+  selector:
+    app: APP_NAME_PLACEHOLDER
+  # PORTS will be added here dynamically
+  sessionAffinity: ClientIP

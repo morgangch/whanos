@@ -1,0 +1,29 @@
+# Kubernetes Deployment Template for Whanos
+# This file is a template that will be processed by Jenkins during deployment
+# Variables will be substituted based on whanos.yml configuration
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: APP_NAME_PLACEHOLDER
+  namespace: NAMESPACE_PLACEHOLDER
+  labels:
+    app: APP_NAME_PLACEHOLDER
+    managed-by: whanos
+spec:
+  replicas: REPLICAS_PLACEHOLDER
+  selector:
+    matchLabels:
+      app: APP_NAME_PLACEHOLDER
+  template:
+    metadata:
+      labels:
+        app: APP_NAME_PLACEHOLDER
+    spec:
+      containers:
+      - name: APP_NAME_PLACEHOLDER
+        image: IMAGE_PLACEHOLDER
+        imagePullPolicy: Always
+        # PORTS will be added here dynamically
+        # RESOURCES will be added here dynamically
+      restartPolicy: Always
