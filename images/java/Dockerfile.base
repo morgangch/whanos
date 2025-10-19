@@ -1,0 +1,8 @@
+# Whanos Java Base Image
+FROM maven:3.9-eclipse-temurin-17
+
+# Set shell to bash
+SHELL ["/bin/bash", "-c"]
+
+# Set working directory
+WORKDIR /app

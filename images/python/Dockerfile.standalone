@@ -1,0 +1,23 @@
+# Whanos Python Standalone Image
+FROM python:3.11-slim
+
+# Set shell to bash
+SHELL ["/bin/bash", "-c"]
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements file
+COPY requirements.txt ./
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application source code
+COPY . /app/
+
+# Clean up unnecessary files
+RUN rm -f requirements.txt
+
+# Define the execution command
+CMD ["python", "-m", "app"]

@@ -1,0 +1,21 @@
+# Whanos JavaScript Standalone Image
+FROM node:20-alpine
+
+# Set shell to bash
+RUN apk add --no-cache bash
+SHELL ["/bin/bash", "-c"]
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install --production
+
+# Copy application source code
+COPY . /app/
+
+# Define the execution command
+CMD ["node", "."]

@@ -1,0 +1,25 @@
+# Whanos Java Standalone Image
+FROM maven:3.9-eclipse-temurin-17 AS builder
+
+# Set shell to bash
+SHELL ["/bin/bash", "-c"]
+
+# Set working directory
+WORKDIR /app
+
+# Copy application source code
+COPY . /app/
+
+# Build the application using Maven
+RUN mvn package -DskipTests
+
+# Runtime stage
+FROM eclipse-temurin:17-jre
+
+WORKDIR /app
+
+# Copy the built jar from builder stage
+COPY --from=builder /app/target/*.jar /app/app.jar
+
+# Define the execution command
+CMD ["java", "-jar", "app.jar"]

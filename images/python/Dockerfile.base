@@ -1,0 +1,8 @@
+# Whanos Python Base Image
+FROM python:3.11-slim
+
+# Set shell to bash
+SHELL ["/bin/bash", "-c"]
+
+# Set working directory
+WORKDIR /app

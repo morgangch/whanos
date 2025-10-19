@@ -1,0 +1,11 @@
+# Whanos C Base Image
+FROM gcc:latest
+
+# Set shell to bash
+SHELL ["/bin/bash", "-c"]
+
+# Set working directory
+WORKDIR /app
+
+# Install make if not present
+RUN apt-get update && apt-get install -y make && rm -rf /var/lib/apt/lists/*
