@@ -85,7 +85,7 @@ pipeline {
                         echo "📄 Using standalone Dockerfile for ${LANGUAGE}"
                         // Copy standalone Dockerfile to workspace
                         sh """
-                            curl -f https://raw.githubusercontent.com/YOUR_REPO/whanos/main/images/${LANGUAGE}/Dockerfile.standalone -o Dockerfile.whanos || \
+                            curl -f https://raw.githubusercontent.com/morgangch/whanos/main/images/${LANGUAGE}/Dockerfile.standalone -o Dockerfile.whanos || \
                             cat /var/jenkins_home/whanos-images/${LANGUAGE}/Dockerfile.standalone > Dockerfile.whanos
                         """
                         dockerfilePath = 'Dockerfile.whanos'
