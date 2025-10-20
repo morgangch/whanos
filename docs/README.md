@@ -69,8 +69,30 @@
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### 🏠 Option 1: Local Setup (Recommended for Development)
 
+**No VMs needed! Just Docker!** 🎉
+
+```bash
+# 1. Start infrastructure
+./start-local.sh start
+
+# 2. Open Jenkins at http://localhost:8080
+# Password will be displayed automatically
+
+# 3. Build base images
+./build-images.sh
+
+# 4. You're ready! 🚀
+```
+
+📖 **[Complete Local Setup Guide](LOCAL_SETUP.md)**
+
+---
+
+### 🌐 Option 2: Production Setup (Multiple Servers with Ansible)
+
+**Prerequisites:**
 - Minimum 3 servers (1 for Jenkins, 1 for Registry, 2+ for Kubernetes)
 - Ubuntu 20.04+ / Debian 11+
 - Ansible 2.9+
