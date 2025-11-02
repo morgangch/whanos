@@ -12,12 +12,12 @@ if (seedJob == null) {
     seedJob = new FreeStyleProject(instance, seedJobName)
     seedJob.setDescription('Seed job that creates all Whanos jobs using Job DSL')
     
-    // Add Job DSL build step
+    // Add Job DSL build step pointing to .dsl files
     def jobDslBuildStep = new ExecuteDslScripts(
         new ExecuteDslScripts.ScriptLocation(
-            'false',  // use script text
-            null,     // targets (not used for script text)
-            new File('/var/jenkins_home/whanos-jenkins/jobs/whanos-jobs.groovy').text  // script text
+            'true',  // use script location (files)
+            '/var/jenkins_home/whanos-jenkins/jobs/*.dsl',  // targets - all .dsl files
+            null  // script text (not used)
         ),
         false,  // ignore existing
         RemovedJobAction.DELETE,
