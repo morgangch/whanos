@@ -71,6 +71,17 @@ check_kubectl() {
 
 start_infrastructure() {
     print_banner
+    print_info "Building custom Jenkins image..."
+    
+    # Build Jenkins image with plugins and init scripts
+    if command -v docker-compose &> /dev/null; then
+        docker-compose build jenkins
+    else
+        docker compose build jenkins
+    fi
+    
+    print_success "Jenkins image built!"
+    
     print_info "Starting Whanos infrastructure..."
     
     # Start services

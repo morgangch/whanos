@@ -17,7 +17,9 @@ services:
 
   # Jenkins CI/CD
   jenkins:
-    image: jenkins/jenkins:lts
+    build:
+      context: ./jenkins
+      dockerfile: Dockerfile
     container_name: whanos-jenkins
     privileged: true
     user: root
@@ -33,6 +35,7 @@ services:
     environment:
       - DOCKER_HOST=unix:///var/run/docker.sock
       - DOCKER_REGISTRY=registry:5000
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
     restart: unless-stopped
     networks:
       - whanos-network

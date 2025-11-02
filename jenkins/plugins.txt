@@ -1,0 +1,10 @@
+git:latest
+cloudbees-folder:latest
+job-dsl:latest
+workflow-aggregator:latest
+docker-workflow:latest
+pipeline-stage-view:latest
+parameterized-trigger:latest
+credentials-binding:latest
+groovy:latest
+kubernetes:latest
