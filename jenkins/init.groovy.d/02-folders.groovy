@@ -1,6 +1,8 @@
 import jenkins.model.*
 import hudson.model.*
 import javaposse.jobdsl.plugin.*
+import javaposse.jobdsl.plugin.actions.*
+import javaposse.jobdsl.plugin.structs.*
 
 def instance = Jenkins.getInstance()
 

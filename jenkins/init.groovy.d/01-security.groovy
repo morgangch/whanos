@@ -5,6 +5,7 @@ import org.jenkinsci.plugins.matrixauth.inheritance.*
 def instance = Jenkins.getInstance()
 
 // Create admin user with password 'admin' and full rights
+// Pass false to constructor to disable signup
 def hudsonRealm = new HudsonPrivateSecurityRealm(false)
 hudsonRealm.createAccount('Admin', 'admin')
 instance.setSecurityRealm(hudsonRealm)
@@ -14,12 +15,9 @@ def strategy = new GlobalMatrixAuthorizationStrategy()
 strategy.add(Jenkins.ADMINISTER, 'Admin')
 instance.setAuthorizationStrategy(strategy)
 
-// Disable signup
-hudsonRealm.setAllowsSignup(false)
-
 instance.save()
 
 println "✅ Security configured:"
 println "   - Admin user created (ID: Admin, password: admin)"
 println "   - Admin has all rights"
-println "   - User signup is disabled"
+println "   - User signup is disabled (realm configured with allowsSignup=false)"
