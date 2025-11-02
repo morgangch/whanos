@@ -8,3 +8,4 @@ parameterized-trigger:latest
 credentials-binding:latest
 groovy:latest
 kubernetes:latest
+matrix-auth:latest

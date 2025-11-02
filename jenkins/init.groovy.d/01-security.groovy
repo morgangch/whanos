@@ -1,5 +1,6 @@
 import jenkins.model.*
 import hudson.security.*
+import org.jenkinsci.plugins.matrixauth.inheritance.*
 
 def instance = Jenkins.getInstance()
 
@@ -9,9 +10,9 @@ hudsonRealm.createAccount('Admin', 'admin')
 instance.setSecurityRealm(hudsonRealm)
 
 // Set up authorization strategy - Admin has all permissions
-def authStrategy = new hudson.security.GlobalMatrixAuthorizationStrategy()
-authStrategy.add(Jenkins.ADMINISTER, 'Admin')
-instance.setAuthorizationStrategy(authStrategy)
+def strategy = new GlobalMatrixAuthorizationStrategy()
+strategy.add(Jenkins.ADMINISTER, 'Admin')
+instance.setAuthorizationStrategy(strategy)
 
 // Disable signup
 hudsonRealm.setAllowsSignup(false)

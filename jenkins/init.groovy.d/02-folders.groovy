@@ -13,12 +13,14 @@ if (seedJob == null) {
     seedJob.setDescription('Seed job that creates all Whanos jobs using Job DSL')
     
     // Add Job DSL build step pointing to .dsl files
+    def scriptLocation = new ExecuteDslScripts.ScriptLocation(
+        'true',  // use script location (files)
+        '/var/jenkins_home/whanos-jenkins/jobs/*.dsl',  // targets - all .dsl files
+        null  // script text (not used)
+    )
+    
     def jobDslBuildStep = new ExecuteDslScripts(
-        new ExecuteDslScripts.ScriptLocation(
-            'true',  // use script location (files)
-            '/var/jenkins_home/whanos-jenkins/jobs/*.dsl',  // targets - all .dsl files
-            null  // script text (not used)
-        ),
+        scriptLocation,
         false,  // ignore existing
         RemovedJobAction.DELETE,
         RemovedViewAction.DELETE,
