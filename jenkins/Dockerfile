@@ -24,4 +24,7 @@ RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
 USER root
 COPY init.groovy.d /usr/share/jenkins/ref/init.groovy.d/
 
+# Copy Job DSL files
+COPY jobs /var/jenkins_home/whanos-jenkins/jobs/
+
 USER jenkins
