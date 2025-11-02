@@ -33,14 +33,34 @@ freeStyleJob("Projects/${DISPLAY_NAME}") {
         scm('* * * * *')
     }
     
+    wrappers {
+        environmentVariables {
+            env('DISPLAY_NAME', '${DISPLAY_NAME}')
+            env('DOCKER_REGISTRY', 'registry:5000')
+        }
+    }
+    
     steps {
         shell(\'\'\'#!/bin/bash
 set -e
 
-DOCKER_REGISTRY=${DOCKER_REGISTRY:-localhost:5000}
-IMAGE_NAME=$(echo "${DISPLAY_NAME}" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]-' '-' | sed 's/-$//')
+# Debug: Print all environment variables related to job
+echo "=== Environment Debug ==="
+echo "JOB_NAME: ${JOB_NAME}"
+echo "JOB_BASE_NAME: ${JOB_BASE_NAME}"
+echo "DISPLAY_NAME env var: ${DISPLAY_NAME:-NOT_SET}"
+echo "========================"
+
+# Extract project name from JOB_NAME (format: Projects/ProjectName)
+PROJECT_NAME=$(echo "${JOB_NAME}" | sed 's|Projects/||' | sed 's|/.*||')
+IMAGE_NAME=$(echo "${PROJECT_NAME}" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]-' '-' | sed 's/-$//')
 IMAGE_TAG=${BUILD_NUMBER}
 LANGUAGE=""
+
+echo "Project Name: ${PROJECT_NAME}"
+echo "Image Name: ${IMAGE_NAME}"
+echo "Image Tag: ${IMAGE_TAG}"
+echo ""
 
 echo "╔═══════════════════════════════════════════╗"
 echo "║     🐋 Whanos Build Pipeline Started     ║"
